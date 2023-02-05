@@ -4,31 +4,110 @@ const nodemailer = require("nodemailer");
 const readline = require("readline");
 const fs = require('fs');
 const Database = require("@replit/database")
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ port: 8080 });
 // {Email, Pass}
 const LoginDB = new Database();
+function hasDuplicates(array) {
+    //step 1: loop through the array;
+    for (let i = 0; i < array.length; i++) {
+        //step two, for each item in the array, loop again through the other array items and check if there is a duplicate value
+        for (let j = i + 1; j < array.length; j++) {
+            if (array[i] === array[j]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 //make personalized mail class 
+
 class File {
     constructor(fileName) {
         this.fileName = fileName;
     }
     readFile(callback) {
-        fs.readFile(this.fileName, (err, data) => {
+        fs.readFile(this.fileName, 'utf8', (err, data) => {
             if (err) {
                 console.log(err);
-                callback(err);
+                //callback function takes an error and data paremeter
+                callback(err, null);
             } else {
-                callback(data.toString());
+                callback(null, data);
             }
         });
     }
-    appendToFile(data, callback) {
-        fs.appendFile(this.fileName, JSON.stringify(data) + ',\n', (err) => {
+    appendToFile(data) {
+        data.email = data.email.toLowerCase();
+        fs.appendFile(this.fileName, JSON.stringify(data) + '&^%72451&@%\n', (err) => {
             if (err) { console.log(err) } else {
                 console.log("Data written to file successfully");
-                callback(data);
             }
         })
     }
+    //category is either email or password in the context of this project and text is the pass and target being the email/username
+    //example of scalable method
+    //the synchrnous version of this snippet is shorter & simpler but async outweighs the cons
+    overWriteUser(_target, _targetCategory, targetChangeCat, changeText) {
+        return new Promise((res, rej) => {
+            this.parseToObjects().then(users => {
+                let targetIndex = -1;
+                for (let i = 0; i < users.length; i++) {
+                    if (users[i][_targetCategory] === _target) {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+                if (targetIndex != -1) {
+                    users[targetIndex][targetChangeCat] = changeText;
+                } else {
+                    //if email does not exist 
+                    return;
+                }
+                fs.writeFile(this.fileName, '', (err) => {
+                    if (err) {
+                        console.log(err);
+                    } else {
+                        console.log('file cleared');
+                        //perfect for typescript
+                        let promises = [];
+                        for (let i = 0; i < users.length; i++) {
+                            promises.push(
+                                new Promise((resolve, reject) => {
+                                    fs.appendFile(
+                                        this.fileName,
+                                        JSON.stringify(users[i]) + '&^%72451&@%\n',
+                                        (err) => {
+                                            if (err) {
+                                                reject(err);
+                                            } else {
+                                                resolve();
+                                            }
+                                        }
+                                    );
+                                })
+                            );
+                        }
+                        //first use case of the Promise.all static method
+
+                        Promise.all(promises)
+                            .then(() => {
+                                console.log('file overwritten successfully');
+                                res(true);
+                            })
+                            .catch((err) => {
+                                console.log(err);
+
+                            });
+
+
+                    }
+                });
+            });
+        })
+
+    }
+
     //returns every single user in the csv file in the form of an array of objects
     async getUserDatabase() {
         try {
@@ -47,28 +126,99 @@ class File {
             throw err;
         }
     }
-    //add user login data to database
-    addUser(email, pass) {
-        let user = {
-            email: email,
-            password: pass
-        }
+    parseToObjects() {
         return new Promise((resolve, reject) => {
-            this.appendToFile(user, (data) => {
-                try {
-                    this.appendToFile(user, (data) => {
-                        resolve(data);
-                    })
-                } catch (err) {
-                    console.log(err);
-                    resolve(err);
+            this.getUserDatabase().then(data => {
+                let fileContents = data;
+                let userArray = fileContents.split('&^%72451&@%');
+                let userParsedArray = [];
+                for (let i = 0; i < userArray.length - 1; i++) {
+                    userParsedArray.push(JSON.parse(userArray[i]));
                 }
+                resolve(userParsedArray);
+
             })
         })
+
+    }
+    //alphabetical merge sort && binary search for upgrade
+    checkForMatchingUserInDB(user) {
+        let incomingUser = JSON.parse(user);
+        return new Promise((resolve, reject) => {
+            this.parseToObjects().then(data => {
+                console.log(incomingUser.email);
+                let foundMatch = false;
+                for (let i = 0; i < data.length; i++) {
+                    if (data[i].email === incomingUser.email && data[i].password === incomingUser.password) {
+                        foundMatch = true;
+                    }
+                }
+                if (!foundMatch) {
+                    resolve(false);
+                } else {
+                    resolve(true);
+                }
+            }).catch(err => console.log(err));
+        })
+    }
+    //checks in user database if someone has the same email, integrate with addUser() to check
+    checkForUserDuplicatesInDB(_user) {
+        let user = _user;
+        return new Promise((resolve, reject) => {
+            this.parseToObjects().then(data => {
+                let userEmails = [];
+                for (let i = 0; i < data.length; i++) {
+                    userEmails.push(data[i].email);
+                }
+                userEmails.push(user.email);
+                if (!hasDuplicates(userEmails)) {
+                    userEmails.pop();
+                    console.log(userEmails);
+                    resolve(true);
+                } else {
+                    userEmails.pop();
+                    resolve(false);
+                }
+            }).catch(err => { console.log(err); reject(false) });
+        })
+    }
+    //add user login data to database
+    addUser(_user) {
+        let user = _user;
+        return new Promise((resolve, reject) => {
+            this.checkForUserDuplicatesInDB(user).then(data => {
+                if (data) {
+                    this.appendToFile(user);
+                    resolve(true);
+                } else {
+                    resolve(false);
+                }
+            }).catch(err => { console.log(err); reject(false) })
+        })
+        /*
+        return new Promise((resolve, reject) => {
+            this.parseToObjects().then((data) => {
+                let userEmails =[];
+                for(let i = 0; i < data.length; i++) {
+                    userEmails.push(data[i].email);
+                }
+                userEmails.push(user.email);
+                if(!hasDuplicates(userEmails)) {
+                    console.log(userEmails);
+                    this.appendToFile(user);
+                    resolve(true);
+                } else {
+                    reject(false);
+                }
+            }).catch(err => console.log(err));
+        });
+        */
     }
 }
 const db = new File('database.csv');
-db.getUserDatabase().then(data => console.log(data));
+db.parseToObjects().then(data => console.log(data));
+//overWrite user password
+
 
 const senderAuth = {
     host: 'smtp.gmail.com',
@@ -173,9 +323,77 @@ http.createServer(function(req, res) {
         } else if (req.url === '/LoginDB') {
             //store or retrieve login information in sql database
             if (req.method === 'POST') {
-
+                console.log("db request started");
+                let incomingVerifiedUser = '';
+                req.on('data', (buffer) => {
+                    incomingVerifiedUser += buffer.toString();
+                })
+                req.on('end', () => {
+                    incomingVerifiedUser = JSON.parse(incomingVerifiedUser);
+                    db.addUser(incomingVerifiedUser).then(successful => {
+                        console.log(successful)
+                        res.write(JSON.stringify({ emailStored: successful }));
+                        res.end();
+                    }).catch(err => console.log(err));
+                })
             } else if (req.method === 'GET') {
 
+            }
+        } else if (req.url === '/checkForDuplicatesInDB') {
+            //check for duplicate emails only, used for the create account process
+            if (req.method === 'POST') {
+                console.log('duplicate checker started');
+                let incomingEmail = '';
+                req.on('data', (buffer) => {
+                    incomingEmail += buffer.toString();
+                })
+                req.on('end', () => {
+                    incomingEmail = JSON.parse(incomingEmail);
+                    db.checkForUserDuplicatesInDB({ email: incomingEmail.toLowerCase() }).then(data => {
+                        console.log('duplicate request end');
+                        res.write(JSON.stringify({ emailNotStored: data }));
+                        res.end();
+                    }).catch(err => console.log(err));
+                })
+            }
+        } else if (req.url === '/checkForSignIn') {
+            //very similar to 'checkForDuplicates' but for passwords too, used for the sign in process
+            if (req.method === 'POST') {
+                let incomingUser = '';
+                req.on('data', (buffer) => {
+                    incomingUser += buffer.toString();
+                })
+                req.on('end', () => {
+                    db.checkForMatchingUserInDB(incomingUser).then(foundMatch => {
+                        res.write(JSON.stringify(foundMatch));
+                        res.end();
+                    });
+
+                })
+            }
+        } else if (req.url === '/amountOfUsers') {
+            if (req.method === 'GET') {
+                db.parseToObjects().then(users => {
+                    res.write(JSON.stringify({ AmountOfUsers: users.length }));
+                    res.end();
+                })
+            }
+        } else if (req.url === '/changePassword') {
+            if (req.method === 'POST') {
+                //will use new password parameter instead of password
+                console.log('change password request started')
+                let incomingUser = '';
+                req.on('data', (buffer) => {
+                    incomingUser += buffer.toString();
+                })
+                req.on('end', () => {
+                    incomingUser = JSON.parse(incomingUser);
+                    db.overWriteUser(incomingUser.email, 'email', 'password', incomingUser.new_password).then(status => {
+                        console.log(status);
+                        res.write(JSON.stringify(status));
+                        res.end();
+                    });
+                })
             }
         }
     })
