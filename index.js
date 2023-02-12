@@ -20,6 +20,14 @@ function hasDuplicates(array) {
     }
     return false;
 }
+function linearSearch(array, target) {
+    for (let i = 0; i < array.length; i++) {
+        if (array[i] === target) {
+            return true;
+        }
+    }
+    return false;
+}
 //make personalized mail class 
 
 class File {
@@ -45,6 +53,8 @@ class File {
             }
         })
     }
+    //capstone methods 
+
     //category is either email or password in the context of this project and text is the pass and target being the email/username
     //example of scalable method
     //the synchrnous version of this snippet is shorter & simpler but async outweighs the cons
@@ -59,7 +69,13 @@ class File {
                     }
                 }
                 if (targetIndex != -1) {
-                    users[targetIndex][targetChangeCat] = changeText;
+                    if (changeText != users[targetIndex][targetChangeCat]) {
+                        users[targetIndex][targetChangeCat] = changeText;
+                    } else {
+                        res(false);
+                        return;
+                    }
+
                 } else {
                     //if email does not exist 
                     return;
@@ -72,20 +88,16 @@ class File {
                         //perfect for typescript
                         let promises = [];
                         for (let i = 0; i < users.length; i++) {
-                            promises.push(
-                                new Promise((resolve, reject) => {
-                                    fs.appendFile(
-                                        this.fileName,
-                                        JSON.stringify(users[i]) + '&^%72451&@%\n',
-                                        (err) => {
-                                            if (err) {
-                                                reject(err);
-                                            } else {
-                                                resolve();
-                                            }
-                                        }
-                                    );
-                                })
+                            promises.push(new Promise((resolve, reject) => {
+                                fs.appendFile(this.fileName, JSON.stringify(users[i]) + '&^%72451&@%\n', (err) => {
+                                    if (err) {
+                                        reject(err);
+                                    } else {
+                                        resolve();
+                                    }
+                                }
+                                );
+                            })
                             );
                         }
                         //first use case of the Promise.all static method
@@ -99,8 +111,6 @@ class File {
                                 console.log(err);
 
                             });
-
-
                     }
                 });
             });
@@ -126,6 +136,49 @@ class File {
             throw err;
         }
     }
+    //dangerous method, use wisely
+    addParameter(key, value) {
+        return new Promise((res, rej) => {
+            this.parseToObjects().then(data => {
+                let users = data;
+                for (let i = 0; i < data.length; i++) {
+                    users[i][key] = value;
+
+                }
+                fs.writeFile(this.fileName, '', (err) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        let promises = [];
+                        for (let i = 0; i < users.length; i++) {
+                            promises.push(new Promise((resolve, reject) => {
+                                fs.appendFile(this.fileName, JSON.stringify(users[i]) + '&^%72451&@%\n', (err) => {
+                                    if (err) {
+                                        reject(err);
+                                    } else {
+                                        resolve();
+                                    }
+                                });
+                            }));
+                        }
+                        //first use case of the Promise.all static method
+
+                        Promise.all(promises)
+                            .then(() => {
+                                console.log('file overwritten successfully');
+                                res(true);
+                            })
+                            .catch((err) => {
+                                console.log(err);
+                                rej(err);
+
+                            });
+                    }
+                })
+            })
+        })
+
+    }
     parseToObjects() {
         return new Promise((resolve, reject) => {
             this.getUserDatabase().then(data => {
@@ -148,38 +201,67 @@ class File {
             this.parseToObjects().then(data => {
                 console.log(incomingUser.email);
                 let foundMatch = false;
+                let foundMatchIndex = -1;
                 for (let i = 0; i < data.length; i++) {
                     if (data[i].email === incomingUser.email && data[i].password === incomingUser.password) {
                         foundMatch = true;
+                        foundMatchIndex = i;
                     }
                 }
                 if (!foundMatch) {
-                    resolve(false);
+                    resolve({ matchStatus: false });
                 } else {
-                    resolve(true);
+                    resolve({ matchStatus: true, username: data[foundMatchIndex].username });
                 }
             }).catch(err => console.log(err));
         })
     }
     //checks in user database if someone has the same email, integrate with addUser() to check
-    checkForUserDuplicatesInDB(_user) {
+    checkForDuplicatesInCategory(_user, targetCategory, target) {
         let user = _user;
         return new Promise((resolve, reject) => {
             this.parseToObjects().then(data => {
-                let userEmails = [];
+                let userCategory = [];
                 for (let i = 0; i < data.length; i++) {
-                    userEmails.push(data[i].email);
+                    userCategory.push(data[i][targetCategory]);
                 }
-                userEmails.push(user.email);
-                if (!hasDuplicates(userEmails)) {
-                    userEmails.pop();
-                    console.log(userEmails);
+                userCategory.push(user[targetCategory]);
+                if (!hasDuplicates(userCategory)) {
+                    userCategory.pop();
+                    console.log(userCategory);
                     resolve(true);
                 } else {
-                    userEmails.pop();
+                    userCategory.pop();
                     resolve(false);
                 }
             }).catch(err => { console.log(err); reject(false) });
+        })
+    }
+    searchInCategory(_user, targetCategory, target) {
+        let user = _user;
+        return new Promise((resolve, reject) => {
+            this.parseToObjects().then(data => {
+                let userCategory = [];
+                for (let i = 0; i < data.length; i++) {
+                    userCategory.push(data[i][targetCategory]);
+                }
+                userCategory.push(user[targetCategory]);
+                if (!linearSearch(userCategory, target)) {
+                    userCategory.pop();
+                    console.log(userCategory);
+                    resolve(true);
+                } else {
+                    userCategory.pop();
+                    resolve(false);
+                }
+            }).catch(err => { console.log(err)});
+        })
+    }
+    checkForUserDuplicatesInDB(_user) {
+        return new Promise((resolve, reject) => {
+            this.checkForDuplicatesInCategory(_user, "email").then(data => {
+                resolve(data);
+            }).catch(err => reject(err));
         })
     }
     //add user login data to database
@@ -216,9 +298,10 @@ class File {
     }
 }
 const db = new File('database.csv');
-db.parseToObjects().then(data => console.log(data));
-//overWrite user password
 
+db.addParameter("on_mailing_list", false);
+db.parseToObjects().then(data => console.log(data));
+// overWrite user password
 
 const senderAuth = {
     host: 'smtp.gmail.com',
@@ -330,7 +413,14 @@ http.createServer(function(req, res) {
                 })
                 req.on('end', () => {
                     incomingVerifiedUser = JSON.parse(incomingVerifiedUser);
-                    db.addUser(incomingVerifiedUser).then(successful => {
+                    let newUser = {
+                        email: incomingVerifiedUser.email,
+                        password: incomingVerifiedUser.password,
+                        username: incomingVerifiedUser.email.split("@")[0],
+                        email_domain: incomingVerifiedUser.email.split("@")[1],
+                        on_mailing_list: false,
+                    }
+                    db.addUser(newUser).then(successful => {
                         console.log(successful)
                         res.write(JSON.stringify({ emailStored: successful }));
                         res.end();
@@ -394,6 +484,33 @@ http.createServer(function(req, res) {
                         res.end();
                     });
                 })
+            }
+        } else if (req.url === '/updateUsername') {
+            if (req.method === 'POST') {
+                console.log('username change requested');
+                let incomingChange = '';
+                req.on('data', (buffer) => {
+                    incomingChange += buffer.toString();
+                })
+                req.on('end', () => {
+                    incomingChange = JSON.parse(incomingChange);
+                    db.searchInCategory("bull", "username", incomingChange.username.replace(/\s/g, '')).then(data => {
+                        if (data) {
+                            db.overWriteUser(incomingChange.email, 'email', 'username', incomingChange.username.replace(/\s/g, '')).then(status => {
+                                res.write(JSON.stringify(status));
+                                res.end();
+                            });
+                            console.log(incomingChange.email);
+                        } else {
+                            res.write(JSON.stringify(false));
+                            res.end();
+                        }
+                    })
+                    //new function
+
+
+                })
+
             }
         }
     })
