@@ -194,6 +194,19 @@ class File {
         })
 
     }
+    getUser(email) {
+        return new Promise((resolve, reject) => {
+            this.parseToObjects().then(users => {
+                for(let i = 0; i < users.length; i++) {
+                    if(email === users[i].email) {
+                        resolve(users[i]);
+                    }
+                }
+                resolve(null);
+            }).catch(err => reject(err));
+        })
+ 
+    }
     //alphabetical merge sort && binary search for upgrade
     checkForMatchingUserInDB(user) {
         let incomingUser = JSON.parse(user);
@@ -494,13 +507,19 @@ http.createServer(function(req, res) {
                 })
                 req.on('end', () => {
                     incomingChange = JSON.parse(incomingChange);
-                    db.searchInCategory("bull", "username", incomingChange.username.replace(/\s/g, '')).then(data => {
+                    db.searchInCategory("bull", "username", incomingChange.username.replace(/\s/g, '').toLowerCase()).then(data => {
                         if (data) {
-                            db.overWriteUser(incomingChange.email, 'email', 'username', incomingChange.username.replace(/\s/g, '')).then(status => {
+                            console.log(incomingChange.username.replace(/\s/g, '').length);
+                            if(incomingChange.username.replace(/\s/g, '').length >= 4 || incomingChange.username.replace(/\s/g, '').length <= 30) {
+                            db.overWriteUser(incomingChange.email, 'email', 'username', incomingChange.username.replace(/\s/g, '').toLowerCase()).then(status => {
                                 res.write(JSON.stringify(status));
                                 res.end();
                             });
                             console.log(incomingChange.email);
+                            } else {
+                                res.write(JSON.stringify(false));
+                                res.end();
+                            }
                         } else {
                             res.write(JSON.stringify(false));
                             res.end();
@@ -509,6 +528,32 @@ http.createServer(function(req, res) {
                     //new function
 
 
+                })
+
+            }
+        } else if (req.url === '/updateMailingList') {
+            console.log('mailing list change requested');
+                        if (req.method === 'POST') {
+                let incomingChange = '';
+                req.on('data', (buffer) => {
+                    incomingChange += buffer.toString();
+                })
+                req.on('end', () => {
+                    incomingChange = JSON.parse(incomingChange);
+                    console.log(incomingChange.type);
+                    if(incomingChange.type === 'post') {
+                    db.overWriteUser(incomingChange.email, 'email', 'on_mailing_list', incomingChange.onMailingList).then(status => {
+                        res.write(JSON.stringify(status));
+                        res.end();
+                    });
+                    } else if (incomingChange.type === 'get') {
+                        db.getUser(incomingChange.email).then(user => {
+                            if(user !== null) {
+                                res.write(JSON.stringify(user.on_mailing_list));
+                                res.end();
+                            } 
+                        })
+                    }
                 })
 
             }
