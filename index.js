@@ -322,7 +322,7 @@ const senderAuth = {
     secure: true,
     auth: {
         user: 'noob2918392@gmail.com',
-        pass: 'pgrzofepgipqyxqj',
+        pass: 'your app password',
     }
 }
 function generateRandomNumber() {
